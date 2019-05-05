@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS champions (
     stat_crit FLOAT(5,3),
     stat_critperlevel FLOAT(5,3),
     stat_attackdamage FLOAT(5,3),
-    stack_attackdamageperlevel FLOAT(5,3),
+    stat_attackdamageperlevel FLOAT(5,3),
     stat_attackspeedperlevel FLOAT(5,3),
     stat_attackspeed FLOAT(5,3),
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -1,8 +1,12 @@
+from db_config import config
+from db_config import DB_TYPE
 import json
+import mysql.connector
 import requests
 import sys
 import tarfile
 import traceback
+from typing import Callable, Dict, Tuple
 
 DATA_DRAGON_URL_HTTP = 'https://ddragon.leagueoflegends.com/cdn/dragontail-%s.tgz'
 LOCAL_FILENAME = 'data/data_dragon.tgz'
@@ -14,19 +18,24 @@ CHUNK_SIZE = 8192
 
 def initialize_static_tables():
     print('Initializing static data tables...')
-    patch_version = get_patch_manual();
+    global patch_version
+    patch_version = get_patch_manual()
     if '--no-request' not in sys.argv:
         success = get_data_dragon_tarfile(patch_version)  # Load file. File will be accessible at LOCAL_FILENAME
         if not success or not tarfile.is_tarfile(LOCAL_FILENAME):
             print('No tables were initialized. Exiting...')
             return
-    with tarfile.open(LOCAL_FILENAME) as tar:
-        print('Extracting data from tarfile...')
-        tar.extractall(path='./data')
-    champion_json = read_json_file(CHAMPION_JSON_PATH % patch_version)
-    item_json = read_json_file(ITEM_JSON_PATH % patch_version)
-    map_json = read_json_file(MAP_JSON_PATH % patch_version)
-    summoner_json = read_json_file(SUMMONER_JSON_PATH % patch_version)
+        with tarfile.open(LOCAL_FILENAME) as tar:
+            print('Extracting data from tarfile...')
+            tar.extractall(path='./data')
+    data = {}
+    # champion.json slightly different structure
+    data['champion_json'] = read_json_file(CHAMPION_JSON_PATH % patch_version)['data']
+    data['item_json'] = read_json_file(ITEM_JSON_PATH % patch_version)
+    data['map_json'] = read_json_file(MAP_JSON_PATH % patch_version)
+    data['summoner_json'] = read_json_file(SUMMONER_JSON_PATH % patch_version)
+    insert_data_into_db(data)
+    print('Operations finished. Exiting...')
 
 
 # TODO: Implement this
@@ -34,8 +43,10 @@ def update_static_tables():
     print('Updating static data tables...')
     return None
 
+
 def get_patch_manual():
     return input('Please enter desired patch version in X.Y.Z format.\n X=season, Y=major version, Z=minor version\n')
+
 
 # Return True if successful. False if not.
 def get_data_dragon_tarfile(patch_version):
@@ -74,6 +85,50 @@ def read_json_file(path):
         print('Exception encountered when reading extracted json files: ', str(err))
         traceback.print_tb(err.__traceback__)
         return None
+
+
+def insert_data_into_db(json_dicts: Dict):
+    print('Opening connection to %s database...' % DB_TYPE)
+    connection = mysql.connector.connect(**config)
+    insert_rows(connection, json_dicts['champion_json'], get_champion_strategy, get_champion_values)
+    connection.close()
+    print('Import finished. Closing connection...')
+
+
+def insert_rows(connection, data: Dict, insert_strategy: Callable[[None], str], insert_values: Callable[[Dict], Tuple]):
+    cursor = connection.cursor()
+    for (key, value) in data.items():
+        try:
+            cursor.execute(insert_strategy(), insert_values(key, value))
+            connection.commit()
+        except mysql.connector.Error as err:
+            print('Exception encountered when reading extracted json files: ', str(err))
+            traceback.print_tb(err.__traceback__)
+    cursor.close()
+
+
+def get_champion_strategy():
+    print('Inserting row into champions table...')
+    return ("INSERT IGNORE INTO champions "
+            "(champion_id, patch_ver, name, title, blurb, info_attack, info_defense, info_magic, info_difficulty,"
+            "resource_type, stat_hp, stat_hpperlevel, stat_mp, stat_mpperlevel, stat_movespeed, stat_armor,"
+            "stat_armorperlevel, stat_spellblock, stat_spellblockperlevel, stat_attackrange, stat_hpregen,"
+            "stat_hpregenperlevel, stat_mpregen, stat_mpregenperlevel, stat_crit, stat_critperlevel, stat_attackdamage,"
+            "stat_attackdamageperlevel, stat_attackspeedperlevel, stat_attackspeed, is_active ) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+            "%s, %s, %s, %s, %s, %s, %s)")
+
+
+def get_champion_values(key: str, value: Dict):
+    return (value['key'], patch_version, value['name'], value['title'], value['blurb'],
+            value['info']['attack'], value['info']['defense'], value['info']['magic'], value['info']['difficulty'],
+            value['partype'], value['stats']['hp'], value['stats']['hpperlevel'], value['stats']['mp'],
+            value['stats']['mpperlevel'], value['stats']['movespeed'], value['stats']['armor'],
+            value['stats']['armorperlevel'], value['stats']['spellblock'], value['stats']['spellblockperlevel'],
+            value['stats']['attackrange'], value['stats']['hpregen'], value['stats']['hpregenperlevel'],
+            value['stats']['mpregen'], value['stats']['mpregenperlevel'], value['stats']['crit'],
+            value['stats']['critperlevel'], value['stats']['attackdamage'], value['stats']['attackdamageperlevel'],
+            value['stats']['attackspeedperlevel'], value['stats']['attackspeed'], True)
 
 if __name__ == '__main__':
     initialize_static_tables()
