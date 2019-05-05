@@ -5,15 +5,16 @@ import traceback
 
 DATA_DRAGON_URL_HTTP = 'https://ddragon.leagueoflegends.com/cdn/dragontail-%s.tgz'
 LOCAL_FILENAME = 'data_dragon.tgz'
+CHUNK_SIZE = 8192
 
 def initialize_static_tables():
     print('Initializing static data tables...')
     patch_version = get_patch_manual();
     success = get_data_dragon_tarfile(patch_version) # Load file. File will be accessible at LOCAL_FILENAME
-    if not success:
+    if not success or not tarfile.is_tarfile(LOCAL_FILENAME):
         print('No tables were initialized. Exiting...')
         return
-    print(tarfile.is_tarfile(LOCAL_FILENAME))
+
 
 def update_static_tables():
     print('Updating static data tables...')
@@ -33,13 +34,13 @@ def get_data_dragon_tarfile(patch_version):
             with open(LOCAL_FILENAME, "wb") as file:
                 # Iterate over chunks
                 length_written = 0
-                for chunk in response.iter_content(chunk_size=8192):
+                for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
                     if chunk: # filter out keep-alive new chunks
                         file.write(chunk)
                         length_written += len(chunk)
                         # If we have a content-length header, show progress bar
-                        if total_length is not None:
-                            sys.stdout.write("\r%d%" % int(length_written / total_length * 100))
+                        if total_length is not None and length_written % (CHUNK_SIZE * 8) == 0:
+                            sys.stdout.write("\r%d%%" % int(length_written / total_length * 100))
                             sys.stdout.flush()
         print()
         return True
