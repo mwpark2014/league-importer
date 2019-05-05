@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS champions (
     stat_attackspeed FLOAT(5,3),
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    is_active BOOLEAN,
     PRIMARY KEY (champion_id)
 );
 
@@ -45,6 +46,8 @@ CREATE TABLE IF NOT EXISTS items (
     depth TINYINT,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    patch_ver VARCHAR(10),
+    is_active BOOLEAN,
     PRIMARY KEY (item_id)
 );
 
@@ -53,6 +56,8 @@ CREATE TABLE IF NOT EXISTS item_item_map (
     result_id INT,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    patch_ver VARCHAR(10),
+    is_active BOOLEAN,
     PRIMARY KEY (component_id, result_id),
     FOREIGN KEY (component_id)
       REFERENCES items(item_id),
@@ -72,6 +77,8 @@ CREATE TABLE IF NOT EXISTS item_stat_map (
     value FLOAT(6,3),
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    patch_ver VARCHAR(10),
+    is_active BOOLEAN,
     PRIMARY KEY (item_id, stat_id),
     FOREIGN KEY (item_id)
       REFERENCES items(item_id),
@@ -90,6 +97,8 @@ CREATE TABLE IF NOT EXISTS champion_tag_map (
     tag_id TINYINT,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    patch_ver VARCHAR(10),
+    is_active BOOLEAN,
     PRIMARY KEY (champion_id, tag_id),
 	FOREIGN KEY (champion_id)
       REFERENCES champions(champion_id),
@@ -102,9 +111,19 @@ CREATE TABLE IF NOT EXISTS item_tag_map (
     tag_id TINYINT,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    patch_ver VARCHAR(10),
+    is_active BOOLEAN,
     PRIMARY KEY (item_id, tag_id),
 	FOREIGN KEY (item_id)
       REFERENCES items(item_id),
 	FOREIGN KEY (tag_id)
 	  REFERENCES tags(tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS summoner_spells (
+    ss_id INT UNIQUE NOT NULL,
+    name VARCHAR(20),
+    description VARCHAR(255),
+    cooldown TINYINT,
+    PRIMARY KEY (ss_id)
 );
