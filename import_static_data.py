@@ -1,21 +1,35 @@
+import json
 import requests
 import sys
 import tarfile
 import traceback
 
 DATA_DRAGON_URL_HTTP = 'https://ddragon.leagueoflegends.com/cdn/dragontail-%s.tgz'
-LOCAL_FILENAME = 'data_dragon.tgz'
+LOCAL_FILENAME = 'data/data_dragon.tgz'
+CHAMPION_JSON_PATH = 'data/%s/data/en_US/champion.json'
+ITEM_JSON_PATH = 'data/%s/data/en_US/item.json'
+MAP_JSON_PATH = 'data/%s/data/en_US/map.json'
+SUMMONER_JSON_PATH = 'data/%s/data/en_US/summoner.json'
 CHUNK_SIZE = 8192
 
 def initialize_static_tables():
     print('Initializing static data tables...')
     patch_version = get_patch_manual();
-    success = get_data_dragon_tarfile(patch_version) # Load file. File will be accessible at LOCAL_FILENAME
-    if not success or not tarfile.is_tarfile(LOCAL_FILENAME):
-        print('No tables were initialized. Exiting...')
-        return
+    if '--no-request' not in sys.argv:
+        success = get_data_dragon_tarfile(patch_version)  # Load file. File will be accessible at LOCAL_FILENAME
+        if not success or not tarfile.is_tarfile(LOCAL_FILENAME):
+            print('No tables were initialized. Exiting...')
+            return
+    with tarfile.open(LOCAL_FILENAME) as tar:
+        print('Extracting data from tarfile...')
+        tar.extractall(path='./data')
+    champion_json = read_json_file(CHAMPION_JSON_PATH % patch_version)
+    item_json = read_json_file(ITEM_JSON_PATH % patch_version)
+    map_json = read_json_file(MAP_JSON_PATH % patch_version)
+    summoner_json = read_json_file(SUMMONER_JSON_PATH % patch_version)
 
 
+# TODO: Implement this
 def update_static_tables():
     print('Updating static data tables...')
     return None
@@ -46,9 +60,20 @@ def get_data_dragon_tarfile(patch_version):
         return True
 
     except Exception as err:
-        print('Exception encountered when retrieving Riot Data Dragon tar file: %s', str(err))
+        print('Exception encountered when retrieving Riot Data Dragon tar file: ', str(err))
         traceback.print_tb(err.__traceback__)
         return False
+
+
+def read_json_file(path):
+    try:
+        print('Parsing json file: %s' % path)
+        with open(path, encoding="utf8") as file:
+            return json.load(file)
+    except Exception as err:
+        print('Exception encountered when reading extracted json files: ', str(err))
+        traceback.print_tb(err.__traceback__)
+        return None
 
 if __name__ == '__main__':
     initialize_static_tables()
