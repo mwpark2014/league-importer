@@ -12,7 +12,6 @@ DATA_DRAGON_URL_HTTP = 'https://ddragon.leagueoflegends.com/cdn/dragontail-%s.tg
 LOCAL_FILENAME = 'data/data_dragon.tgz'
 CHAMPION_JSON_PATH = 'data/%s/data/en_US/champion.json'
 ITEM_JSON_PATH = 'data/%s/data/en_US/item.json'
-MAP_JSON_PATH = 'data/%s/data/en_US/map.json'
 SUMMONER_JSON_PATH = 'data/%s/data/en_US/summoner.json'
 CHUNK_SIZE = 8192
 
@@ -29,10 +28,8 @@ def initialize_static_tables():
             print('Extracting data from tarfile...')
             tar.extractall(path='./data')
     data = {}
-    # champion.json slightly different structure
-    data['champion_json'] = read_json_file(CHAMPION_JSON_PATH % patch_version)['data']
+    data['champion_json'] = read_json_file(CHAMPION_JSON_PATH % patch_version)
     data['item_json'] = read_json_file(ITEM_JSON_PATH % patch_version)
-    data['map_json'] = read_json_file(MAP_JSON_PATH % patch_version)
     data['summoner_json'] = read_json_file(SUMMONER_JSON_PATH % patch_version)
     insert_data_into_db(data)
     print('Operations finished. Exiting...')
@@ -80,7 +77,7 @@ def read_json_file(path):
     try:
         print('Parsing json file: %s' % path)
         with open(path, encoding="utf8") as file:
-            return json.load(file)
+            return json.load(file)['data']
     except Exception as err:
         print('Exception encountered when reading extracted json files: ', str(err))
         traceback.print_tb(err.__traceback__)
@@ -91,6 +88,7 @@ def insert_data_into_db(json_dicts: Dict):
     print('Opening connection to %s database...' % DB_TYPE)
     connection = mysql.connector.connect(**config)
     insert_rows(connection, json_dicts['champion_json'], get_champion_strategy, get_champion_values)
+    insert_rows(connection, json_dicts['item_json'], get_item_strategy, get_item_values)
     connection.close()
     print('Import finished. Closing connection...')
 
@@ -120,15 +118,59 @@ def get_champion_strategy():
 
 
 def get_champion_values(key: str, value: Dict):
-    return (value['key'], patch_version, value['name'], value['title'], value['blurb'],
-            value['info']['attack'], value['info']['defense'], value['info']['magic'], value['info']['difficulty'],
-            value['partype'], value['stats']['hp'], value['stats']['hpperlevel'], value['stats']['mp'],
-            value['stats']['mpperlevel'], value['stats']['movespeed'], value['stats']['armor'],
-            value['stats']['armorperlevel'], value['stats']['spellblock'], value['stats']['spellblockperlevel'],
-            value['stats']['attackrange'], value['stats']['hpregen'], value['stats']['hpregenperlevel'],
-            value['stats']['mpregen'], value['stats']['mpregenperlevel'], value['stats']['crit'],
-            value['stats']['critperlevel'], value['stats']['attackdamage'], value['stats']['attackdamageperlevel'],
-            value['stats']['attackspeedperlevel'], value['stats']['attackspeed'], True)
+    return (value.get('key'),
+            patch_version,
+            value.get('name'),
+            value.get('title'),
+            value.get('blurb'),
+            value.get('info', {}).get('attack'),
+            value.get('info', {}).get('defense'),
+            value.get('info', {}).get('magic'),
+            value.get('info', {}).get('difficulty'),
+            value.get('partype'),
+            value.get('stats', {}).get('hp'),
+            value.get('stats', {}).get('hpperlevel'),
+            value.get('stats', {}).get('mp'),
+            value.get('stats', {}).get('mpperlevel'),
+            value.get('stats', {}).get('movespeed'),
+            value.get('stats', {}).get('armor'),
+            value.get('stats', {}).get('armorperlevel'),
+            value.get('stats', {}).get('spellblock'),
+            value.get('stats', {}).get('spellblockperlevel'),
+            value.get('stats', {}).get('attackrange'),
+            value.get('stats', {}).get('hpregen'),
+            value.get('stats', {}).get('hpregenperlevel'),
+            value.get('stats', {}).get('mpregen'),
+            value.get('stats', {}).get('mpregenperlevel'),
+            value.get('stats', {}).get('crit'),
+            value.get('stats', {}).get('critperlevel'),
+            value.get('stats', {}).get('attackdamage'),
+            value.get('stats', {}).get('attackdamageperlevel'),
+            value.get('stats', {}).get('attackspeedperlevel'),
+            value.get('stats', {}).get('attackspeed'), True)
+
+
+def get_item_strategy():
+    print('Inserting row into items table...')
+    return ("INSERT IGNORE INTO items "
+            "(item_id, name, description, gold_base, gold_total, purchaseable, active_in_srmap, depth,"
+            "patch_ver, is_active) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
+
+
+def get_item_values(key: str, value: Dict):
+    return (key,
+            value.get('name'),
+            value.get('plaintext'),
+            value.get('gold', {}).get('base'),
+            value.get('gold', {}).get('total'),
+            value.get('gold', {}).get('purchasable'),
+            # map_id = 11 is summoner's rift
+            bool(value.get('maps', {}).get('11')),
+            value.get('depth'),
+            patch_version,
+            True)
+
 
 if __name__ == '__main__':
     initialize_static_tables()
