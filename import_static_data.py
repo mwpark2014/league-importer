@@ -87,35 +87,50 @@ def read_json_file(path):
 def insert_data_into_db(json_dicts: Dict):
     print('Opening connection to %s database...' % DB_TYPE)
     connection = mysql.connector.connect(**config)
-    insert_rows(connection, json_dicts['champion_json'], get_champion_strategy, get_champion_values)
-    insert_rows(connection, json_dicts['item_json'], get_item_strategy, get_item_values)
-    insert_rows(connection, json_dicts['summoner_json'], get_summoner_strategy, get_summoner_values)
+    insert_rows(connection, json_dicts['champion_json'], insert_champion_related_entities)
+    insert_rows(connection, json_dicts['item_json'], insert_item_related_entities)
+    insert_rows(connection, json_dicts['summoner_json'], insert_summoner_related_entities)
     connection.close()
     print('Import finished. Closing connection...')
 
 
-def insert_rows(connection, data: Dict, insert_strategy: Callable[[None], str], insert_values: Callable[[Dict], Tuple]):
+def insert_rows(connection, data: Dict, insert_strategy: Callable[[None], str]):
     cursor = connection.cursor()
     for (key, value) in data.items():
         try:
-            cursor.execute(insert_strategy(), insert_values(key, value))
+            insert_strategy(cursor, key, value)
             connection.commit()
-        except mysql.connector.Error as err:
+        except Exception as err:
             print('Exception encountered when reading extracted json files: ', str(err))
             traceback.print_tb(err.__traceback__)
     cursor.close()
 
 
-def get_champion_strategy():
+# needs refactoring
+def insert_champion_related_entities(cursor, key: str, value: Dict):
     print('Inserting row into champions table...')
-    return ("INSERT IGNORE INTO champions "
+    champions_insert_stmt = ("INSERT IGNORE INTO champions "
             "(champion_id, patch_ver, name, title, blurb, info_attack, info_defense, info_magic, info_difficulty,"
             "resource_type, stat_hp, stat_hpperlevel, stat_mp, stat_mpperlevel, stat_movespeed, stat_armor,"
             "stat_armorperlevel, stat_spellblock, stat_spellblockperlevel, stat_attackrange, stat_hpregen,"
             "stat_hpregenperlevel, stat_mpregen, stat_mpregenperlevel, stat_crit, stat_critperlevel, stat_attackdamage,"
             "stat_attackdamageperlevel, stat_attackspeedperlevel, stat_attackspeed, is_active ) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "%s, %s, %s, %s, %s, %s, %s)")
+                             "%s, %s, %s, %s, %s, %s, %s);")
+    cursor.execute(champions_insert_stmt, get_champion_values(key, value))
+
+    if value.get('tags'):
+        tag_tuples = [(tag,) for tag in value.get('tags')]
+        tags_insert_stmt = "INSERT IGNORE INTO tags (name) VALUES (%s);"
+        cursor.executemany(tags_insert_stmt, tag_tuples)
+        champion_tag_insert_stmt = ("INSERT IGNORE INTO champion_tag_map "
+                                    "(champion_id, tag_id, patch_ver, is_active) "
+                                    "VALUES (%s, %s, %s, %s);")
+        format_strings = ','.join(['%s'] * len(value.get('tags')))
+        cursor.execute("SELECT tag_id from tags where name in (%s)" % format_strings, value.get('tags'))
+        tag_ids = [tag[0] for tag in cursor]
+        champion_tag_values = [(value.get('key'), tag, patch_version, True) for tag in tag_ids]
+        cursor.executemany(champion_tag_insert_stmt, champion_tag_values)
 
 
 def get_champion_values(key: str, value: Dict):
@@ -151,12 +166,17 @@ def get_champion_values(key: str, value: Dict):
             value.get('stats', {}).get('attackspeed'), True)
 
 
-def get_item_strategy():
+def insert_item_related_entities(cursor, key: str, value: Dict):
     print('Inserting row into items table...')
-    return ("INSERT IGNORE INTO items "
+    items_insert_stmt = ("INSERT IGNORE INTO items "
             "(item_id, name, description, gold_base, gold_total, purchaseable, active_in_srmap, depth,"
             "patch_ver, is_active) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
+    cursor.execute(items_insert_stmt, get_item_values(key, value))
+
+    if value.get('tags'):
+        tags_insert_stmt = "INSERT IGNORE INTO tags (name) VALUES (%s);"
+        cursor.executemany(tags_insert_stmt, [(tag,) for tag in value.get('tags')])
 
 
 def get_item_values(key: str, value: Dict):
@@ -173,11 +193,12 @@ def get_item_values(key: str, value: Dict):
             True)
 
 
-def get_summoner_strategy():
+def insert_summoner_related_entities(cursor, key: str, value: Dict):
     print('Inserting row into summoner_spells table...')
-    return ("INSERT IGNORE INTO summoner_spells "
+    summoners_insert_stmt = ("INSERT IGNORE INTO summoner_spells "
             "(ss_id, name, description, cooldown, patch_ver, is_active) "
             "VALUES (%s, %s, %s, %s, %s, %s)")
+    cursor.execute(summoners_insert_stmt, get_summoner_values(key, value))
 
 
 def get_summoner_values(key: str, value: Dict):

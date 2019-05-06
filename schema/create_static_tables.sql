@@ -87,14 +87,14 @@ CREATE TABLE IF NOT EXISTS item_stat_map (
 );
 
 CREATE TABLE IF NOT EXISTS tags (
-    tag_id TINYINT AUTO_INCREMENT,
-    name VARCHAR(20),
+    tag_id INT AUTO_INCREMENT,
+    name VARCHAR(20) UNIQUE,
     PRIMARY KEY (tag_id)
 );
 
 CREATE TABLE IF NOT EXISTS champion_tag_map (
 	champion_id INT, 
-    tag_id TINYINT,
+    tag_id INT,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
     patch_ver VARCHAR(10),
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS champion_tag_map (
 
 CREATE TABLE IF NOT EXISTS item_tag_map (
 	item_id INT, 
-    tag_id TINYINT,
+    tag_id INT,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
     patch_ver VARCHAR(10),
