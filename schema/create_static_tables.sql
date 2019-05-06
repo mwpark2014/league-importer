@@ -125,5 +125,7 @@ CREATE TABLE IF NOT EXISTS summoner_spells (
     name VARCHAR(20),
     description VARCHAR(255),
     cooldown TINYINT,
+	patch_ver VARCHAR(10),
+    is_active BOOLEAN,
     PRIMARY KEY (ss_id)
 );

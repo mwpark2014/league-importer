@@ -89,6 +89,7 @@ def insert_data_into_db(json_dicts: Dict):
     connection = mysql.connector.connect(**config)
     insert_rows(connection, json_dicts['champion_json'], get_champion_strategy, get_champion_values)
     insert_rows(connection, json_dicts['item_json'], get_item_strategy, get_item_values)
+    insert_rows(connection, json_dicts['summoner_json'], get_summoner_strategy, get_summoner_values)
     connection.close()
     print('Import finished. Closing connection...')
 
@@ -168,6 +169,22 @@ def get_item_values(key: str, value: Dict):
             # map_id = 11 is summoner's rift
             bool(value.get('maps', {}).get('11')),
             value.get('depth'),
+            patch_version,
+            True)
+
+
+def get_summoner_strategy():
+    print('Inserting row into summoner_spells table...')
+    return ("INSERT IGNORE INTO summoner_spells "
+            "(ss_id, name, description, cooldown, patch_ver, is_active) "
+            "VALUES (%s, %s, %s, %s, %s, %s)")
+
+
+def get_summoner_values(key: str, value: Dict):
+    return (value.get('key'),
+            value.get('name'),
+            value.get('description'),
+            value.get('cooldown')[0],
             patch_version,
             True)
 
