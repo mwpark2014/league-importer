@@ -39,15 +39,21 @@ SUMMONERS_INSERT_STMT = (
 )
 TAGS_INSERT_STMT = "INSERT INTO tags (name) VALUES (%s);"
 CHAMPIONS_TAGS_INSERT_STMT = (
-    "INSERT INTO champion_tag_map "
+    "INSERT IGNORE INTO champion_tag_map "
     "(champion_id, tag_id, patch_ver, is_active) "
     "VALUES (%s, %s, %s, %s);"
 )
 ITEMS_TAGS_INSERT_STMT = (
-    "INSERT INTO item_tag_map "
+    "INSERT IGNORE INTO item_tag_map "
     "(item_id, tag_id, patch_ver, is_active) "
     "VALUES (%s, %s, %s, %s);"
 )
+ITEMS_ITEMS_INSERT_STMT = (
+    "INSERT IGNORE INTO item_item_map "
+    "(component_id, result_id, patch_ver, is_active) "
+    "VALUES (%s, %s, %s, %s)"
+)
+
 
 def initialize_static_tables():
     print('Initializing static data tables...')
@@ -129,14 +135,14 @@ def insert_initial_data_into_db(json_dicts: Dict):
                                CHAMPIONS_TAGS_INSERT_STMT, get_champion_id)
     associate_tags_with_entity(connection, tags, json_dicts['item_json'],
                                ITEMS_TAGS_INSERT_STMT, get_item_id)
-    # associate_items_with_items()
+    associate_items_with_items(connection, json_dicts['item_json'])
     connection.close()
     print('Import finished. Closing connection...')
 
 
 # insert rows into each table
 def insert_rows(connection, data: Dict, insert_stmt: str, get_values: Callable, table_name: str):
-    print('Inserting row into %s table...' % table_name)
+    print('Inserting rows into %s table...' % table_name)
     cursor = connection.cursor()
     all_values = [get_values(key, value) for (key, value) in data.items()]
     try:
@@ -163,7 +169,7 @@ def create_and_insert_tags(connection, seq_of_data: Sequence) -> Dict:
                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", (config['database'], 'tags'))
     counter = cursor.fetchone()[0]
     # insert tag_set into tags table
-    print('Inserting row into tags table...')
+    print('Inserting rows into tags table...')
     tag_values = [(tag,) for tag in tag_set]
     try:
         cursor.executemany(TAGS_INSERT_STMT, tag_values)
@@ -198,6 +204,21 @@ def associate_tags_with_entity(connection, tags: Dict, data: Dict, insert_stmt: 
         print('Exception encountered when executing a DB transaction (change rolled back): ', str(err))
     cursor.close()
 
+
+def associate_items_with_items(connection, items: Dict):
+    cursor = connection.cursor()
+    item_recipe_values = []
+    print('Inserting item-item associations...')
+    for (key, value) in items.items():
+        if value.get('into'):
+            for result in value.get('into'):
+                item_recipe_values.append((key, result, patch_version, True))
+    try:
+        cursor.executemany(ITEMS_ITEMS_INSERT_STMT, item_recipe_values)
+        connection.commit()
+    except mysql.connector.Error as err:
+        print('Exception encountered when executing a DB transaction (change rolled back): ', str(err))
+    cursor.close()
 
 def get_champion_id(key, value):
     return value.get('key')
