@@ -66,14 +66,14 @@ CREATE TABLE IF NOT EXISTS item_item_map (
 );
 
 CREATE TABLE IF NOT EXISTS stats (
-    stat_id TINYINT,
+    stat_id INT,
     name VARCHAR(125),
     PRIMARY KEY (stat_id)
 );
 
 CREATE TABLE IF NOT EXISTS item_stat_map (
     item_id INT,
-    stat_id TINYINT,
+    stat_id INT,
     value FLOAT(6,3),
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	last_updated TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
