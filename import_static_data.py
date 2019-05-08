@@ -43,6 +43,11 @@ ENTITIES_TAGS_INSERT_STMT = (
     "({0}_id, tag_id, patch_ver, is_active) "
     "VALUES (%s, %s, %s, %s);"
 )
+ENTITIES_STATS_INSERT_STMT = (
+    "INSERT IGNORE INTO {0}_stat_map "
+    "({0}_id, stat_id, value, patch_ver, is_active) "
+    "VALUES (%s, %s, %s, %s, %s);"
+)
 ITEMS_ITEMS_INSERT_STMT = (
     "INSERT IGNORE INTO item_item_map "
     "(component_id, result_id, patch_ver, is_active) "
@@ -131,6 +136,7 @@ def insert_initial_data_into_db(json_dicts: Dict):
     associate_tags_with_entity(connection, tagsToId, json_dicts['champion_json'], 'champion', get_champion_id)
     associate_tags_with_entity(connection, tagsToId, json_dicts['item_json'], 'item', get_item_id)
     statsToId = property_search_and_insert(connection, (json_dicts['item_json'],), 'stats')
+    associate_stats_with_entity(connection, statsToId, json_dicts['item_json'], 'item', get_item_id)
 
     connection.close()
     print('Import finished. Closing connection...')
@@ -202,6 +208,24 @@ def associate_tags_with_entity(connection, tags: Dict, data: Dict, table: str, g
                 entity_tag_values.append((get_id(key, value), tags[tag], patch_version, True))
     try:
         cursor.executemany(ENTITIES_TAGS_INSERT_STMT.format(table), entity_tag_values)
+        connection.commit()
+    except mysql.connector.Error as err:
+        print('Exception encountered when executing a DB transaction (change rolled back): ', str(err))
+    cursor.close()
+
+
+def associate_stats_with_entity(connection, stats: Dict, data: Dict, table: str, get_id: Callable):
+    if not stats:
+        return
+    print('Inserting {}-stat associations...'.format(table))
+    cursor = connection.cursor()
+    entity_stat_values = []
+    for (key, value) in data.items():
+        if value.get('stats'):  # If this is not None, this should be a Dict
+            for (stat_k, stat_v) in value.get('stats').items():
+                entity_stat_values.append((get_id(key, value), stats[stat_k], stat_v, patch_version, True))
+    try:
+        cursor.executemany(ENTITIES_STATS_INSERT_STMT.format(table), entity_stat_values)
         connection.commit()
     except mysql.connector.Error as err:
         print('Exception encountered when executing a DB transaction (change rolled back): ', str(err))
