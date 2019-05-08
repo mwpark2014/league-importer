@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS item_item_map (
 );
 
 CREATE TABLE IF NOT EXISTS stats (
-    stat_id INT,
+    stat_id INT AUTO_INCREMENT,
     name VARCHAR(125),
     PRIMARY KEY (stat_id)
 );

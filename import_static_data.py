@@ -37,15 +37,10 @@ SUMMONERS_INSERT_STMT = (
     "(ss_id, name, description, cooldown, patch_ver, is_active) "
     "VALUES (%s, %s, %s, %s, %s, %s)"
 )
-TAGS_INSERT_STMT = "INSERT INTO tags (name) VALUES (%s);"
-CHAMPIONS_TAGS_INSERT_STMT = (
-    "INSERT IGNORE INTO champion_tag_map "
-    "(champion_id, tag_id, patch_ver, is_active) "
-    "VALUES (%s, %s, %s, %s);"
-)
-ITEMS_TAGS_INSERT_STMT = (
-    "INSERT IGNORE INTO item_tag_map "
-    "(item_id, tag_id, patch_ver, is_active) "
+PROPERTIES_INSERT_STMT = "INSERT INTO {} (name) VALUES (%s);"
+ENTITIES_TAGS_INSERT_STMT = (
+    "INSERT IGNORE INTO {0}_tag_map "
+    "({0}_id, tag_id, patch_ver, is_active) "
     "VALUES (%s, %s, %s, %s);"
 )
 ITEMS_ITEMS_INSERT_STMT = (
@@ -127,22 +122,23 @@ def read_json_file(path):
 def insert_initial_data_into_db(json_dicts: Dict):
     print('Opening connection to %s database...' % DB_TYPE)
     connection = mysql.connector.connect(**config)
-    tags = create_and_insert_tags(connection, (json_dicts['champion_json'], json_dicts['item_json']))
     insert_rows(connection, json_dicts['champion_json'], CHAMPIONS_INSERT_STMT, get_champion_values, 'champions')
     insert_rows(connection, json_dicts['item_json'], ITEMS_INSERT_STMT, get_item_values, 'items')
     insert_rows(connection, json_dicts['summoner_json'], SUMMONERS_INSERT_STMT, get_summoner_values, 'summoners')
-    associate_tags_with_entity(connection, tags, json_dicts['champion_json'],
-                               CHAMPIONS_TAGS_INSERT_STMT, get_champion_id)
-    associate_tags_with_entity(connection, tags, json_dicts['item_json'],
-                               ITEMS_TAGS_INSERT_STMT, get_item_id)
     associate_items_with_items(connection, json_dicts['item_json'])
+
+    tagsToId = property_search_and_insert(connection, (json_dicts['champion_json'], json_dicts['item_json']), 'tags')
+    associate_tags_with_entity(connection, tagsToId, json_dicts['champion_json'], 'champion', get_champion_id)
+    associate_tags_with_entity(connection, tagsToId, json_dicts['item_json'], 'item', get_item_id)
+    statsToId = property_search_and_insert(connection, (json_dicts['item_json'],), 'stats')
+
     connection.close()
     print('Import finished. Closing connection...')
 
 
 # insert rows into each table
 def insert_rows(connection, data: Dict, insert_stmt: str, get_values: Callable, table_name: str):
-    print('Inserting rows into %s table...' % table_name)
+    print('Inserting rows into {} table...'.format(table_name))
     cursor = connection.cursor()
     all_values = [get_values(key, value) for (key, value) in data.items()]
     try:
@@ -153,44 +149,51 @@ def insert_rows(connection, data: Dict, insert_stmt: str, get_values: Callable, 
     cursor.close()
 
 
-def create_and_insert_tags(connection, seq_of_data: Sequence) -> Dict:
+# Search through a sequence of dictionaries to find uses of a specified property
+# and create a table with all the possible values of that property
+# @param seq_of_data Sequence of dictionaries representing entity data from Riot API
+# @param property_name Property associated with entity in many to many relationship. Also the name of the table
+#   the property values will be inserted into
+# Return dictionary of property values with ids
+def property_search_and_insert(connection, seq_of_data: Sequence, property_name: str) -> Dict:
     cursor = connection.cursor()
-    tag_set = set()
-    # iterate over any entities containing tags. ex: champions, items
+    property_set = set()
+    # iterate over any entities containing the specified property. ex: champions, items
     for data in seq_of_data:
         for value in data.values():
-            # value.get('tags') expected to return list of strings
-            if value.get('tags'):
-                for tag in value.get('tags'):
-                    tag_set.add(tag)
+            # value.get(property) expected to return list of strings
+            if value.get(property_name):
+                for property in value.get(property_name):
+                    property_set.add(property)
 
     # Grab the auto_increment value before attempting to insert
     cursor.execute("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
-                   "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", (config['database'], 'tags'))
+                   "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", (config['database'], property_name))
     counter = cursor.fetchone()[0]
     # insert tag_set into tags table
-    print('Inserting rows into tags table...')
-    tag_values = [(tag,) for tag in tag_set]
+    print('Inserting rows into {} table...'.format(property_name))
+    property_values = [(property,) for property in property_set]
     try:
-        cursor.executemany(TAGS_INSERT_STMT, tag_values)
+        cursor.executemany(PROPERTIES_INSERT_STMT.format(property_name), property_values)
         connection.commit()
     except mysql.connector.Error as err:
-        print('Could not insert tags into table. Skipping insert tags step...', err)
+        print('Could not insert into {0} table. Skipping insert {0} step...'.format(property_name), err)
         return {}
     finally:
         cursor.close()
 
-    tag_dict = {}
-    for tag in tag_set:
-        tag_dict[tag] = counter
+    property_dict = {}
+    # Possible bug if this for loop executes in different order than before for the same set
+    for property in property_set:
+        property_dict[property] = counter
         counter += 1
-    return tag_dict
+    return property_dict
 
 
-def associate_tags_with_entity(connection, tags: Dict, data: Dict, insert_stmt: str, get_id: Callable):
+def associate_tags_with_entity(connection, tags: Dict, data: Dict, table: str, get_id: Callable):
     if not tags:
         return
-    print('Inserting tag associations...')
+    print('Inserting {}-tag associations...'.format(table))
     cursor = connection.cursor()
     entity_tag_values = []
     for (key, value) in data.items():
@@ -198,7 +201,7 @@ def associate_tags_with_entity(connection, tags: Dict, data: Dict, insert_stmt: 
             for tag in value.get('tags'):
                 entity_tag_values.append((get_id(key, value), tags[tag], patch_version, True))
     try:
-        cursor.executemany(insert_stmt, entity_tag_values)
+        cursor.executemany(ENTITIES_TAGS_INSERT_STMT.format(table), entity_tag_values)
         connection.commit()
     except mysql.connector.Error as err:
         print('Exception encountered when executing a DB transaction (change rolled back): ', str(err))
