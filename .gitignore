@@ -1,2 +1,4 @@
 data/*
-db_config.py
+venv/*
+.idea/*
+config.py

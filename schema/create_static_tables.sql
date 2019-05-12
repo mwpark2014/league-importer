@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS items (
     is_active BOOLEAN,
     PRIMARY KEY (item_id)
 );
+INSERT IGNORE INTO items (item_id, name) VALUES (0, 'None');
 
 CREATE TABLE IF NOT EXISTS item_item_map (
     component_id INT,

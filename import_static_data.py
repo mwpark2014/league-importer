@@ -1,5 +1,4 @@
-from db_config import config
-from db_config import DB_TYPE
+from config import db_config, DB_TYPE
 import json
 import mysql.connector
 import requests
@@ -7,6 +6,8 @@ import sys
 import tarfile
 import traceback
 from typing import Callable, Dict, Sequence
+
+# Import static data such as items, champions, and summoner spells
 
 DATA_DRAGON_URL_HTTP = 'https://ddragon.leagueoflegends.com/cdn/dragontail-%s.tgz'
 LOCAL_FILENAME = 'data/data_dragon.tgz'
@@ -126,7 +127,7 @@ def read_json_file(path):
 
 def insert_initial_data_into_db(json_dicts: Dict):
     print('Opening connection to %s database...' % DB_TYPE)
-    connection = mysql.connector.connect(**config)
+    connection = mysql.connector.connect(**db_config)
     insert_rows(connection, json_dicts['champion_json'], CHAMPIONS_INSERT_STMT, get_champion_values, 'champions')
     insert_rows(connection, json_dicts['item_json'], ITEMS_INSERT_STMT, get_item_values, 'items')
     insert_rows(connection, json_dicts['summoner_json'], SUMMONERS_INSERT_STMT, get_summoner_values, 'summoners')
@@ -174,7 +175,7 @@ def property_search_and_insert(connection, seq_of_data: Sequence, property_name:
 
     # Grab the auto_increment value before attempting to insert
     cursor.execute("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
-                   "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", (config['database'], property_name))
+                   "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", (db_config['database'], property_name))
     counter = cursor.fetchone()[0]
     # insert tag_set into tags table
     print('Inserting rows into {} table...'.format(property_name))
