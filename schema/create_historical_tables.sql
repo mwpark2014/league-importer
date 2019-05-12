@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS matches (
 	match_id BIGINT UNIQUE NOT NULL,
     region VARCHAR(5),
-	game_creation TIMESTAMP,
-    game_duration TIMESTAMP,
+	game_creation  INT(11) UNSIGNED,
+    game_duration SMALLINT,
     season_id TINYINT,
     game_version VARCHAR(32),
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS match_teams (
 		REFERENCES matches(match_id)
 );
 
+CREATE TABLE IF NOT EXISTS match_timelines_stats (
+	match_timeline_id INT AUTO_INCREMENT,
+    interval_0_10 FLOAT(7, 3),
+    interval_10_20 FLOAT(7, 3),
+    interval_20_30 FLOAT(7, 3),
+    interval_30_end FLOAT(7, 3),
+    PRIMARY KEY (match_timeline_id)
+);
+
 CREATE TABLE IF NOT EXISTS match_participants (
 	match_participant_id TINYINT NOT NULL,
     match_team_id TINYINT NOT NULL,
@@ -48,13 +57,13 @@ CREATE TABLE IF NOT EXISTS match_participants (
     account_id VARCHAR(64) NOT NULL,
     highest_achieved_season_tier VARCHAR(16),
 	win BOOLEAN,
-	item0 INT,
-	item1 INT,
-	item2 INT,
-	item3 INT,
-	item4 INT,
-	item5 INT,
-	item6 INT, # trinket slot
+	item0_id INT,
+	item1_id INT,
+	item2_id INT,
+	item3_id INT,
+	item4_id INT,
+	item5_id INT,
+	item6_id INT, # trinket slot
 	kills TINYINT,
 	deaths TINYINT,
 	assists TINYINT,
@@ -103,6 +112,13 @@ CREATE TABLE IF NOT EXISTS match_participants (
 	firstTowerAssist BOOLEAN,
 	firstInhibitorKill BOOLEAN,
 	firstInhibitorAssist BOOLEAN,
+    creepsPerMinDelta_id INT,
+    xpPerMinDelta_id INT,
+    goldPerMinDelta_id INT, 
+    csDiffPerMinDelta_id INT, 
+    xpDiffPerMinDelta_id INT, 
+    damageTakenPerMinDelta_id INT, 
+    damageTakenDiffPerMinDelta_id INT,
 	created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (match_id, match_participant_id),
 	FOREIGN KEY	(match_id) 
@@ -115,32 +131,33 @@ CREATE TABLE IF NOT EXISTS match_participants (
 		REFERENCES summoner_spells(ss_id),
 	FOREIGN KEY	(account_id) 
 		REFERENCES accounts(account_id),
-	FOREIGN KEY	(item0) 
+	FOREIGN KEY	(item0_id) 
 		REFERENCES items(item_id),
-	FOREIGN KEY	(item1) 
+	FOREIGN KEY	(item1_id) 
 		REFERENCES items(item_id),
-	FOREIGN KEY	(item2) 
+	FOREIGN KEY	(item2_id) 
 		REFERENCES items(item_id),
-	FOREIGN KEY	(item3) 
+	FOREIGN KEY	(item3_id) 
 		REFERENCES items(item_id),
-	FOREIGN KEY	(item4) 
+	FOREIGN KEY	(item4_id) 
 		REFERENCES items(item_id),
-	FOREIGN KEY	(item5) 
+	FOREIGN KEY	(item5_id) 
 		REFERENCES items(item_id),
-	FOREIGN KEY	(item6) 
-		REFERENCES items(item_id)
-);
-
-CREATE TABLE IF NOT EXISTS match_timeline_stats (
-	match_timeline_id INT UNIQUE NOT NULL,
-	match_participant_id TINYINT NOT NULL,
-    match_id BIGINT NOT NULL,
-    interval_0_10 FLOAT(7, 3),
-    interval_10_20 FLOAT(7, 3),
-    interval_20_30 FLOAT(7, 3),
-    interval_30_end FLOAT(7, 3),
-    PRIMARY KEY (match_timeline_id),
-	FOREIGN KEY	(match_id, match_participant_id) 
-		REFERENCES match_participants(match_id, match_participant_id)
+	FOREIGN KEY	(item6_id) 
+		REFERENCES items(item_id),
+	FOREIGN KEY (creepsPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id),
+	FOREIGN KEY (xpPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id),
+	FOREIGN KEY (goldPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id),
+	FOREIGN KEY (csDiffPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id),
+	FOREIGN KEY (xpDiffPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id),
+	FOREIGN KEY (damageTakenPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id),
+	FOREIGN KEY (damageTakenDiffPerMinDelta_id)
+		REFERENCES match_timelines_stats(match_timeline_id)
 );
 
