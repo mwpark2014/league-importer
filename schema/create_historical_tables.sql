@@ -129,8 +129,6 @@ CREATE TABLE IF NOT EXISTS match_participants (
 		REFERENCES summoner_spells(ss_id),
 	FOREIGN KEY	(spell2_id) 
 		REFERENCES summoner_spells(ss_id),
-	FOREIGN KEY	(account_id) 
-		REFERENCES accounts(account_id),
 	FOREIGN KEY	(item0_id) 
 		REFERENCES items(item_id),
 	FOREIGN KEY	(item1_id) 
@@ -160,4 +158,5 @@ CREATE TABLE IF NOT EXISTS match_participants (
 	FOREIGN KEY (damageTakenDiffPerMinDelta_id)
 		REFERENCES match_timelines_stats(match_timeline_id)
 );
+CREATE INDEX acct_index ON match_participants(account_id);
 

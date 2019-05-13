@@ -1,4 +1,4 @@
-from config import db_config, DB_TYPE, RIOT_GAMES_API_KEY, \
+from config import db_config, RIOT_GAMES_API_KEY, \
     AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_SQS_URL, AWS_REGION_NAME
 import boto3
 from botocore.exceptions import ClientError
@@ -101,13 +101,32 @@ def process_match_breadth_traversal():
 
     # Insert match data into DB
     insert_single_match_into_db(connection, match, accountIdByParticipantId)
+    print('Completed all operations. Exiting...')
     connection.close()
 
 
+# Process matches 20 at a time
 def process_backlog_matches():
     print('Processing backlog matches...')
     client = connect_to_sqs()
-    return
+    connection = mysql.connector.connect(**db_config)
+    for i in range(2):
+        messages = receive_match_messages(client, 10)
+        match_ids = [message.get('Body') for message in messages]
+        for match_id in match_ids:
+            # Get match data for match_id from riot games API
+            match = get(RIOT_GET_MATCH_URL.format('na1', match_id))
+
+            # Loop through summoner accounts within match
+            # Populate the account_id column
+            accountIdByParticipantId = {}
+            if match.get('participantIdentities'):
+                for participant in match.get('participantIdentities'):
+                    # Fail fast if there are no participant or account ids
+                    accountIdByParticipantId[participant['participantId']] = participant['player']['currentAccountId']
+
+            # Insert match data into DB
+            insert_single_match_into_db(connection, match, accountIdByParticipantId)
 
 
 # numMessages must be <= 10 due to AWS restrictions
@@ -181,7 +200,6 @@ def insert_single_match_into_db(connection, match: Dict, accountIdByParticipantI
             participant_value_dict['account_id'] = "'" + accountIdByParticipantId.get(
                 participant.get('participantId')) + "'"
             cursor.execute(MATCH_PARTICIPANTS_INSERT_STMT.format(**participant_value_dict))
-
         connection.commit()
     except mysql.connector.Error as err:
         print('Exception encountered when attempting to insert match with id: {}. Skipping...: '
@@ -221,7 +239,6 @@ def send_matchlist_message_from_account(connection, sqs_client, account: Dict):
               .format(account_id), str(err))
     finally:
         cursor.close()
-    return
 
 
 # Send get request to url and return json
@@ -287,72 +304,73 @@ def set_participant_values(values: Dict, participant_data: Dict):
     values['champion_id'] = participant_data.get('championId')
     values['spell1_id'] = participant_data.get('spell1Id')
     values['spell2_id'] = participant_data.get('spell2Id')
+    values['win'] = participant_data.get('stats', {}).get('win', 'null')
+    values['item0_id'] = participant_data.get('stats', {}).get('item0', 'null')
+    values['item1_id'] = participant_data.get('stats', {}).get('item1', 'null')
+    values['item2_id'] = participant_data.get('stats', {}).get('item2', 'null')
+    values['item3_id'] = participant_data.get('stats', {}).get('item3', 'null')
+    values['item4_id'] = participant_data.get('stats', {}).get('item4', 'null')
+    values['item5_id'] = participant_data.get('stats', {}).get('item5', 'null')
+    values['item6_id'] = participant_data.get('stats', {}).get('item6', 'null')
+    values['kills'] = participant_data.get('stats', {}).get('kills', 'null')
+    values['deaths'] = participant_data.get('stats', {}).get('deaths', 'null')
+    values['assists'] = participant_data.get('stats', {}).get('assists', 'null')
+    values['largestKillingSpree'] = participant_data.get('stats', {}).get('largestKillingSpree', 'null')
+    values['largestMultiKill'] = participant_data.get('stats', {}).get('largestMultiKill', 'null')
+    values['killingSprees'] = participant_data.get('stats', {}).get('killingSprees', 'null')
+    values['longestTimeSpentLiving'] = participant_data.get('stats', {}).get('longestTimeSpentLiving', 'null')
+    values['doubleKills'] = participant_data.get('stats', {}).get('doubleKills', 'null')
+    values['tripleKills'] = participant_data.get('stats', {}).get('tripleKills', 'null')
+    values['quadraKills'] = participant_data.get('stats', {}).get('quadraKills', 'null')
+    values['pentaKills'] = participant_data.get('stats', {}).get('pentaKills', 'null')
+    values['unrealKills'] = participant_data.get('stats', {}).get('unrealKills', 'null')
+    values['totalDamageDealt'] = participant_data.get('stats', {}).get('totalDamageDealt', 'null')
+    values['magicDamageDealt'] = participant_data.get('stats', {}).get('magicDamageDealt', 'null')
+    values['physicalDamageDealt'] = participant_data.get('stats', {}).get('physicalDamageDealt', 'null')
+    values['trueDamageDealt'] = participant_data.get('stats', {}).get('trueDamageDealt', 'null')
+    values['largestCriticalStrike'] = participant_data.get('stats', {}).get('largestCriticalStrike', 'null')
+    values['totalDamageDealtToChampions'] = participant_data.get('stats', {}).get('totalDamageDealtToChampions', 'null')
+    values['magicDamageDealtToChampions'] = participant_data.get('stats', {}).get('magicDamageDealtToChampions', 'null')
+    values['physicalDamageDealtToChampions'] = participant_data.get('stats', {}).get('physicalDamageDealtToChampions',
+                                                                                     'null')
+    values['trueDamageDealtToChampions'] = participant_data.get('stats', {}).get('trueDamageDealtToChampions', 'null')
+    values['totalHeal'] = participant_data.get('stats', {}).get('totalHeal', 'null')
+    values['totalUnitsHealed'] = participant_data.get('stats', {}).get('totalUnitsHealed', 'null')
+    values['damageSelfMitigated'] = participant_data.get('stats', {}).get('damageSelfMitigated', 'null')
+    values['damageDealtToObjectives'] = participant_data.get('stats', {}).get('damageDealtToObjectives', 'null')
+    values['damageDealtToTurrets'] = participant_data.get('stats', {}).get('damageDealtToTurrets', 'null')
+    values['visionScore'] = participant_data.get('stats', {}).get('visionScore', 'null')
+    values['timeCCingOthers'] = participant_data.get('stats', {}).get('timeCCingOthers', 'null')
+    values['totalDamageTaken'] = participant_data.get('stats', {}).get('totalDamageTaken', 'null')
+    values['magicalDamageTaken'] = participant_data.get('stats', {}).get('magicalDamageTaken', 'null')
+    values['physicalDamageTaken'] = participant_data.get('stats', {}).get('physicalDamageTaken', 'null')
+    values['trueDamageTaken'] = participant_data.get('stats', {}).get('trueDamageTaken', 'null')
+    values['goldEarned'] = participant_data.get('stats', {}).get('goldEarned', 'null')
+    values['goldSpent'] = participant_data.get('stats', {}).get('goldSpent', 'null')
+    values['turretKills'] = participant_data.get('stats', {}).get('turretKills', 'null')
+    values['inhibitorKills'] = participant_data.get('stats', {}).get('inhibitorKills', 'null')
+    values['totalMinionsKilled'] = participant_data.get('stats', {}).get('totalMinionsKilled', 'null')
+    values['neutralMinionsKilled'] = participant_data.get('stats', {}).get('neutralMinionsKilled', 'null')
+    values['totalTimeCrowdControlDealt'] = participant_data.get('stats', {}).get('totalTimeCrowdControlDealt', 'null')
+    values['champLevel'] = participant_data.get('stats', {}).get('champLevel', 'null')
+    values['visionWardsBoughtInGame'] = participant_data.get('stats', {}).get('visionWardsBoughtInGame', 'null')
+    values['sightWardsBoughtInGame'] = participant_data.get('stats', {}).get('sightWardsBoughtInGame', 'null')
+    values['firstBloodKill'] = participant_data.get('stats', {}).get('firstBloodKill', 'null')
+    values['firstBloodAssist'] = participant_data.get('stats', {}).get('firstBloodAssist', 'null')
+    values['firstTowerKill'] = participant_data.get('stats', {}).get('firstTowerKill', 'null')
+    values['firstTowerAssist'] = participant_data.get('stats', {}).get('firstTowerAssist', 'null')
+    values['firstInhibitorKill'] = participant_data.get('stats', {}).get('firstInhibitorKill', 'null')
+    values['firstInhibitorAssist'] = participant_data.get('stats', {}).get('firstInhibitorAssist', 'null')
+    # Optional values
     # Since we're directly formatting the insert statement string, we need to add quotes for strings
     values['highest_achieved_season_tier'] = "'" + participant_data.get('highestAchievedSeasonTier', 'null') + "'"
-    values['win'] = participant_data.get('stats', {}).get('win')
-    values['item0_id'] = participant_data.get('stats', {}).get('item0')
-    values['item1_id'] = participant_data.get('stats', {}).get('item1')
-    values['item2_id'] = participant_data.get('stats', {}).get('item2')
-    values['item3_id'] = participant_data.get('stats', {}).get('item3')
-    values['item4_id'] = participant_data.get('stats', {}).get('item4')
-    values['item5_id'] = participant_data.get('stats', {}).get('item5')
-    values['item6_id'] = participant_data.get('stats', {}).get('item6')
-    values['kills'] = participant_data.get('stats', {}).get('kills')
-    values['deaths'] = participant_data.get('stats', {}).get('deaths')
-    values['assists'] = participant_data.get('stats', {}).get('assists')
-    values['largestKillingSpree'] = participant_data.get('stats', {}).get('largestKillingSpree')
-    values['largestMultiKill'] = participant_data.get('stats', {}).get('largestMultiKill')
-    values['killingSprees'] = participant_data.get('stats', {}).get('killingSprees')
-    values['longestTimeSpentLiving'] = participant_data.get('stats', {}).get('longestTimeSpentLiving')
-    values['doubleKills'] = participant_data.get('stats', {}).get('doubleKills')
-    values['tripleKills'] = participant_data.get('stats', {}).get('tripleKills')
-    values['quadraKills'] = participant_data.get('stats', {}).get('quadraKills')
-    values['pentaKills'] = participant_data.get('stats', {}).get('pentaKills')
-    values['unrealKills'] = participant_data.get('stats', {}).get('unrealKills')
-    values['totalDamageDealt'] = participant_data.get('stats', {}).get('totalDamageDealt')
-    values['magicDamageDealt'] = participant_data.get('stats', {}).get('magicDamageDealt')
-    values['physicalDamageDealt'] = participant_data.get('stats', {}).get('physicalDamageDealt')
-    values['trueDamageDealt'] = participant_data.get('stats', {}).get('trueDamageDealt')
-    values['largestCriticalStrike'] = participant_data.get('stats', {}).get('largestCriticalStrike')
-    values['totalDamageDealtToChampions'] = participant_data.get('stats', {}).get('totalDamageDealtToChampions')
-    values['magicDamageDealtToChampions'] = participant_data.get('stats', {}).get('magicDamageDealtToChampions')
-    values['physicalDamageDealtToChampions'] = participant_data.get('stats', {}).get('physicalDamageDealtToChampions')
-    values['trueDamageDealtToChampions'] = participant_data.get('stats', {}).get('trueDamageDealtToChampions')
-    values['totalHeal'] = participant_data.get('stats', {}).get('totalHeal')
-    values['totalUnitsHealed'] = participant_data.get('stats', {}).get('totalUnitsHealed')
-    values['damageSelfMitigated'] = participant_data.get('stats', {}).get('damageSelfMitigated')
-    values['damageDealtToObjectives'] = participant_data.get('stats', {}).get('damageDealtToObjectives')
-    values['damageDealtToTurrets'] = participant_data.get('stats', {}).get('damageDealtToTurrets')
-    values['visionScore'] = participant_data.get('stats', {}).get('visionScore')
-    values['timeCCingOthers'] = participant_data.get('stats', {}).get('timeCCingOthers')
-    values['totalDamageTaken'] = participant_data.get('stats', {}).get('totalDamageTaken')
-    values['magicalDamageTaken'] = participant_data.get('stats', {}).get('magicalDamageTaken')
-    values['physicalDamageTaken'] = participant_data.get('stats', {}).get('physicalDamageTaken')
-    values['trueDamageTaken'] = participant_data.get('stats', {}).get('trueDamageTaken')
-    values['goldEarned'] = participant_data.get('stats', {}).get('goldEarned')
-    values['goldSpent'] = participant_data.get('stats', {}).get('goldSpent')
-    values['turretKills'] = participant_data.get('stats', {}).get('turretKills')
-    values['inhibitorKills'] = participant_data.get('stats', {}).get('inhibitorKills')
-    values['totalMinionsKilled'] = participant_data.get('stats', {}).get('totalMinionsKilled')
-    values['neutralMinionsKilled'] = participant_data.get('stats', {}).get('neutralMinionsKilled')
-    values['totalTimeCrowdControlDealt'] = participant_data.get('stats', {}).get('totalTimeCrowdControlDealt')
-    values['champLevel'] = participant_data.get('stats', {}).get('champLevel')
-    values['visionWardsBoughtInGame'] = participant_data.get('stats', {}).get('visionWardsBoughtInGame')
-    values['sightWardsBoughtInGame'] = participant_data.get('stats', {}).get('sightWardsBoughtInGame')
-    values['firstBloodKill'] = participant_data.get('stats', {}).get('firstBloodKill')
-    values['firstBloodAssist'] = participant_data.get('stats', {}).get('firstBloodAssist')
-    values['firstTowerKill'] = participant_data.get('stats', {}).get('firstTowerKill')
-    values['firstTowerAssist'] = participant_data.get('stats', {}).get('firstTowerAssist')
-    values['firstInhibitorKill'] = participant_data.get('stats', {}).get('firstInhibitorKill')
-    values['firstInhibitorAssist'] = participant_data.get('stats', {}).get('firstInhibitorAssist')
-    # Optional values
-    values['creepsPerMinDeltas'] = 'null'
-    values['xpPerMinDeltas'] = 'null'
-    values['goldPerMinDeltas'] = 'null'
-    values['csDiffPerMinDeltas'] = 'null'
-    values['xpDiffPerMinDeltas'] = 'null'
-    values['damageTakenPerMinDeltas'] = 'null'
-    values['damageTakenDiffPerMinDeltas'] = 'null'
+    values['creepsPerMinDelta_id'] = 'null'
+    values['xpPerMinDelta_id'] = 'null'
+    values['goldPerMinDelta_id'] = 'null'
+    values['csDiffPerMinDelta_id'] = 'null'
+    values['xpDiffPerMinDelta_id'] = 'null'
+    values['damageTakenPerMinDelta_id'] = 'null'
+    values['damageTakenDiffPerMinDelta_id'] = 'null'
 
 if __name__ == '__main__':
-    initialize({})
+    initialize({'state': 'backlog'})
