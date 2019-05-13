@@ -2,7 +2,6 @@ from config import db_config, DB_TYPE, RIOT_GAMES_API_KEY, \
     AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_SQS_URL, AWS_REGION_NAME
 import boto3
 from botocore.exceptions import ClientError
-import json
 import mysql.connector
 import requests
 import traceback
@@ -10,9 +9,12 @@ from typing import Dict, Sequence, Tuple
 
 REGION_PREFIXES = ('na1', 'kr', 'euw1')
 RIOT_GET_MATCH_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matches/{1}'
-RIOT_GET_MATCHLIST_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matchlists/by-account/{1}' \
-                         '?queue=420&api_key=%s' % RIOT_GAMES_API_KEY
+RIOT_GET_MATCHLIST_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matchlists/by-account/{1}?queue=420'
 
+ACCOUNTS_INSERT_STMT = (
+    'INSERT INTO accounts (account_id, summoner_name, summoner_id, region) '
+    'VALUES (%s, %s, %s, %s)'
+)
 MATCHES_INSERT_STMT = (
     'INSERT INTO matches (match_id, region, game_creation, game_duration, season_id, game_version) '
     'VALUES (%s, %s, %s, %s, %s, %s)'
@@ -88,16 +90,18 @@ def process_match_breadth_traversal():
         print('No matches could be retrieved from Riot API. Exiting...')
         return
 
+    connection = mysql.connector.connect(**db_config)
     # Loop through summoner accounts within match
     accountIdByParticipantId = {}
     if match.get('participantIdentities'):
         for participant in match.get('participantIdentities'):
-            send_matchlist_message_from_account(participant)
+            send_matchlist_message_from_account(connection, client, participant['player'])
             # Fail fast if there are no participant or account ids
             accountIdByParticipantId[participant['participantId']] = participant['player']['currentAccountId']
 
     # Insert match data into DB
-    insert_single_match_into_db(match, accountIdByParticipantId)
+    insert_single_match_into_db(connection, match, accountIdByParticipantId)
+    connection.close()
 
 
 def process_backlog_matches():
@@ -133,16 +137,15 @@ def read_match(match_id: str):
 
 
 # Insert single match row into matches table
-def insert_single_match_into_db(match: Dict, accountIdByParticipantId: Dict):
+def insert_single_match_into_db(connection, match: Dict, accountIdByParticipantId: Dict):
     if not match:
         return None
-    connection = mysql.connector.connect(**db_config)
     cursor = connection.cursor()
     try:
-        print('Inserting row into matches table...')
+        match_id = match.get('gameId')
+        print('Inserting match id={} into matches table...'.format(match_id))
 
         # Insert into matches table
-        match_id = match.get('gameId')
         match_values = (match_id, match.get('platformId'), match.get('gameCreation'),  # No MS Precision
                         match.get('gameDuration'), match.get('seasonId'), match.get('gameVersion'))
         cursor.execute(MATCHES_INSERT_STMT, match_values)
@@ -175,8 +178,8 @@ def insert_single_match_into_db(match: Dict, accountIdByParticipantId: Dict):
             set_participant_values(participant_value_dict, participant)  # Mutate participant_value_dict
             participant_value_dict['match_id'] = match_id
             # Since we're directly formatting the insert statement string, we need to add quotes for strings
-            participant_value_dict['account_id'] = accountIdByParticipantId.get(participant.get('participantId'))
-            print(MATCH_PARTICIPANTS_INSERT_STMT.format(**participant_value_dict))
+            participant_value_dict['account_id'] = "'" + accountIdByParticipantId.get(
+                participant.get('participantId')) + "'"
             cursor.execute(MATCH_PARTICIPANTS_INSERT_STMT.format(**participant_value_dict))
 
         connection.commit()
@@ -186,7 +189,6 @@ def insert_single_match_into_db(match: Dict, accountIdByParticipantId: Dict):
         return None
     finally:
         cursor.close()
-        connection.close()
 
 
 def insert_batched_matches_into_db(matches: Sequence):
@@ -194,19 +196,31 @@ def insert_batched_matches_into_db(matches: Sequence):
     return
 
 
-def send_matchlist_message_from_account(account: Dict):
+def send_matchlist_message_from_account(connection, sqs_client, account: Dict):
+    account_id = account.get('currentAccountId')
+    print('Grabbing match lists of summoner account id={}...'.format(account_id))
+    cursor = connection.cursor()
     # Attempt to insert account. If account_id not unique, it will fail
     try:
-        return
-    except mysql.connector.Error as err:
-        print('Exception encountered when attempting to add {} to accounts. Skipping...: '
-              .format(account.get('account_id')), str(err))
-
-    # if yes return
-    # if no,
-    # 1. call riot games api
-    # 2. insert account_id in mySql:accounts
-    # read json, loop through 100 items in a row, add them to SQS
+        account_values = (account_id, account.get('summonerName'), account.get('summonerId'),
+                          account.get('currentPlatformId'))
+        cursor.execute(ACCOUNTS_INSERT_STMT, account_values)
+        match_list = get(RIOT_GET_MATCHLIST_URL.format('na1', account_id))
+        batch_container = []
+        for match in match_list.get('matches', []):
+            batch_container.append(match.get('gameId'))
+            if len(batch_container) >= 10:
+                send_matches_to_sqs(sqs_client, batch_container)
+                batch_container.clear()
+        # Send the rest that are left over
+        if len(batch_container) > 0:
+            send_matches_to_sqs(sqs_client, batch_container)
+        connection.commit()
+    except mysql.connector.IntegrityError as err:
+        print('This summoner account, id: {}, has most likely already been added. Skipping...: '
+              .format(account_id), str(err))
+    finally:
+        cursor.close()
     return
 
 
@@ -246,19 +260,25 @@ def connect_to_sqs():
         return None
 
 
-def send_message_to_sqs(sqs_client, message):
+# Send batches of matches to AWS SQS Match Queue
+def send_matches_to_sqs(sqs_client, matchIds):
     if sqs_client is None:
         return
+    messages = [
+        {
+            'Id': str(matchId),
+            'MessageBody': str(matchId),
+            'MessageGroupId': '1'
+        }
+        for matchId in matchIds
+    ]
     # Send message to SQS
-    response = sqs_client.send_message(
+    response = sqs_client.send_message_batch(
         QueueUrl=AWS_SQS_URL,
-        MessageBody=message,
-        MessageGroupId='1',
+        Entries=messages,
     )
-    print('Sent message with id: {} to SQS'.format(response.get('MessageId')))
-
-    def get_match_values(match: Dict) -> Tuple:
-        return ()
+    print('Sent {} messages with to SQS'.format(len(messages)))
+    # print(response)
 
 
 def set_participant_values(values: Dict, participant_data: Dict):
@@ -268,7 +288,7 @@ def set_participant_values(values: Dict, participant_data: Dict):
     values['spell1_id'] = participant_data.get('spell1Id')
     values['spell2_id'] = participant_data.get('spell2Id')
     # Since we're directly formatting the insert statement string, we need to add quotes for strings
-    values['highest_achieved_season_tier'] = "'" + participant_data.get('highestAchievedSeasonTier') + "'"
+    values['highest_achieved_season_tier'] = "'" + participant_data.get('highestAchievedSeasonTier', 'null') + "'"
     values['win'] = participant_data.get('stats', {}).get('win')
     values['item0_id'] = participant_data.get('stats', {}).get('item0')
     values['item1_id'] = participant_data.get('stats', {}).get('item1')
@@ -325,6 +345,14 @@ def set_participant_values(values: Dict, participant_data: Dict):
     values['firstTowerAssist'] = participant_data.get('stats', {}).get('firstTowerAssist')
     values['firstInhibitorKill'] = participant_data.get('stats', {}).get('firstInhibitorKill')
     values['firstInhibitorAssist'] = participant_data.get('stats', {}).get('firstInhibitorAssist')
+    # Optional values
+    values['creepsPerMinDeltas'] = 'null'
+    values['xpPerMinDeltas'] = 'null'
+    values['goldPerMinDeltas'] = 'null'
+    values['csDiffPerMinDeltas'] = 'null'
+    values['xpDiffPerMinDeltas'] = 'null'
+    values['damageTakenPerMinDeltas'] = 'null'
+    values['damageTakenDiffPerMinDeltas'] = 'null'
 
 if __name__ == '__main__':
     initialize({})

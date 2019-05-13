@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS accounts (
 	account_id VARCHAR(64) UNIQUE NOT NULL,
-    summoner_nme VARCHAR(64),
+    summoner_name VARCHAR(64),
     summoner_id VARCHAR(64),
     region VARCHAR(5),
     primary key(account_id)
