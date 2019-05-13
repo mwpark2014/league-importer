@@ -61,6 +61,13 @@ MATCH_TIMELINES_INSERT_STMT = (
 )
 
 
+def lambda_handler(event, context):
+    initialize(event)
+    return {
+        'statusCode': 200
+    }
+
+
 def initialize(params: Dict):
     if params.get('state') == 'backlog':
         process_backlog_matches()
