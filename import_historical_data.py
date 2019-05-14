@@ -28,7 +28,9 @@ AWS_REGION_NAME = decrypt(os.environ['AWS_REGION_NAME'])
 
 REGION_PREFIXES = ('na1', 'kr', 'euw1')
 RIOT_GET_MATCH_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matches/{1}'
-RIOT_GET_MATCHLIST_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matchlists/by-account/{1}?queue=420'
+# Only grab matches for 5v5 Ranked and matches from 5/1/19 and onward
+RIOT_GET_MATCHLIST_URL = \
+    'https://{0}.api.riotgames.com/lol/match/v4/matchlists/by-account/{1}?queue=420&beginTime=1556668800'
 
 ACCOUNTS_INSERT_STMT = (
     'INSERT INTO accounts (account_id, summoner_name, summoner_id, region) '
@@ -36,7 +38,7 @@ ACCOUNTS_INSERT_STMT = (
 )
 MATCHES_INSERT_STMT = (
     'INSERT INTO matches (match_id, region, game_creation, game_duration, season_id, game_version) '
-    'VALUES (%s, %s, %s, %s, %s, %s)'
+    'VALUES (%s, %s, FROM_UNIXTIME(%s / 1000), %s, %s, %s)'
 )
 MATCH_TEAMS_INSERT_STMT = (
     'INSERT INTO match_teams (match_team_id, match_id, win, first_blood, first_tower, first_inhibitor, first_baron, '
@@ -399,4 +401,4 @@ def set_participant_values(values: Dict, participant_data: Dict):
     values['damageTakenDiffPerMinDelta_id'] = 'null'
 
 if __name__ == '__main__':
-    initialize({'state': 'backlog'})
+    initialize({})
