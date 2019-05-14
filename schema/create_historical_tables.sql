@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS matches (
 	match_id BIGINT UNIQUE NOT NULL,
     region VARCHAR(5),
-	game_creation  INT(11) UNSIGNED,
+	game_creation TIMESTAMP,
     game_duration SMALLINT,
     season_id TINYINT,
     game_version VARCHAR(32),
