@@ -1,30 +1,9 @@
 import boto3
 import mysql.connector
-import os
 import requests
 import traceback
-from base64 import b64decode
 from botocore.exceptions import ClientError
-from typing import Dict, Sequence, Tuple
-
-kms = boto3.client('kms')
-
-
-def decrypt(encrypted):
-    return kms.decrypt(CiphertextBlob=b64decode(encrypted))['Plaintext'].decode("utf-8")
-
-
-db_config = {
-    'host': decrypt(os.environ['DB_HOST']),
-    'database': decrypt(os.environ['DB_NAME']),
-    'user': decrypt(os.environ['DB_USER']),
-    'password': decrypt(os.environ['DB_PW']),
-}
-RIOT_GAMES_API_KEY = decrypt(os.environ['RIOT_GAMES_API_KEY'])
-AWS_ACCESS_KEY = decrypt(os.environ['AWS_ACCESS_KEY_2'])
-AWS_SECRET_KEY = decrypt(os.environ['AWS_SECRET_KEY_2'])
-AWS_SQS_URL = decrypt(os.environ['AWS_SQS_URL'])
-AWS_REGION_NAME = decrypt(os.environ['AWS_REGION_NAME'])
+from typing import Dict, Sequence
 
 REGION_PREFIXES = ('na1', 'kr', 'euw1')
 RIOT_GET_MATCH_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matches/{1}'
@@ -82,7 +61,31 @@ MATCH_TIMELINES_INSERT_STMT = (
 )
 
 
+def set_config_from_local():
+    import config as c
+    global db_config, RIOT_GAMES_API_KEY, AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_SQS_URL, AWS_REGION_NAME
+    db_config, RIOT_GAMES_API_KEY, AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_SQS_URL, AWS_REGION_NAME = \
+        c.db_config, c.RIOT_GAMES_API_KEY, c.AWS_ACCESS_KEY, c.AWS_SECRET_KEY, c.AWS_SQS_URL, c.AWS_REGION_NAME
+
+
+def set_config_from_aws():
+    import os
+    global db_config, RIOT_GAMES_API_KEY, AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_SQS_URL, AWS_REGION_NAME
+    db_config = {
+        'host': os.environ['DB_HOST'],
+        'database': os.environ['DB_NAME'],
+        'user': os.environ['DB_USER'],
+        'password': os.environ['DB_PW'],
+    }
+    RIOT_GAMES_API_KEY = os.environ['RIOT_GAMES_API_KEY']
+    AWS_ACCESS_KEY = os.environ['AWS_ACCESS_KEY_2']
+    AWS_SECRET_KEY = os.environ['AWS_SECRET_KEY_2']
+    AWS_SQS_URL = os.environ['AWS_SQS_URL']
+    AWS_REGION_NAME = os.environ['AWS_REGION_NAME']
+
+
 def lambda_handler(event, context):
+    set_config_from_aws()
     initialize(event)
     return {
         'statusCode': 200
@@ -401,4 +404,5 @@ def set_participant_values(values: Dict, participant_data: Dict):
     values['damageTakenDiffPerMinDelta_id'] = 'null'
 
 if __name__ == '__main__':
+    set_config_from_local()
     initialize({})
