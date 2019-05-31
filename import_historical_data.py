@@ -1,11 +1,30 @@
-from config import db_config, RIOT_GAMES_API_KEY, \
-    AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_SQS_URL, AWS_REGION_NAME
 import boto3
-from botocore.exceptions import ClientError
 import mysql.connector
+import os
 import requests
 import traceback
+from base64 import b64decode
+from botocore.exceptions import ClientError
 from typing import Dict, Sequence, Tuple
+
+kms = boto3.client('kms')
+
+
+def decrypt(encrypted):
+    return kms.decrypt(CiphertextBlob=b64decode(encrypted))['Plaintext'].decode("utf-8")
+
+
+db_config = {
+    'host': decrypt(os.environ['DB_HOST']),
+    'database': decrypt(os.environ['DB_NAME']),
+    'user': decrypt(os.environ['DB_USER']),
+    'password': decrypt(os.environ['DB_PW']),
+}
+RIOT_GAMES_API_KEY = decrypt(os.environ['RIOT_GAMES_API_KEY'])
+AWS_ACCESS_KEY = decrypt(os.environ['AWS_ACCESS_KEY_2'])
+AWS_SECRET_KEY = decrypt(os.environ['AWS_SECRET_KEY_2'])
+AWS_SQS_URL = decrypt(os.environ['AWS_SQS_URL'])
+AWS_REGION_NAME = decrypt(os.environ['AWS_REGION_NAME'])
 
 REGION_PREFIXES = ('na1', 'kr', 'euw1')
 RIOT_GET_MATCH_URL = 'https://{0}.api.riotgames.com/lol/match/v4/matches/{1}'
